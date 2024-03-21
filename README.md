@@ -1,2 +1,3 @@
 # ganglioside_method_paper
 R scripts to process LipidSearch outputs with a focus on gangliosides
+We developed R scripts to clean and filter the LipidSearch results.  Briefly, our criteria for the sphingolipids were that the retention time was more than 2 minutes, the peak area was more than 1000, and the t-score was less than 0.5. These parameters were chosen after manually checking batches of results and sifting through true and false analyte signatures; we therefore believe these criteria to be a sound starting point for the data processing. By utilizing these R scripts, the data processing time was reduced significantly. 
