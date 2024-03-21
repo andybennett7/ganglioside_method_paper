@@ -1,0 +1,95 @@
+##### Updated script to process gangliosides (CBG Q-Exactive HF, ZIC HILIC column)
+##### also used to reprocess TTU_HSC data
+
+options(java.parameters = "-Xmx16g")
+library(plyr)
+library(dplyr)
+library(xlsx)
+library(tidyverse)
+library(rJava)
+library(readxl)
+library(xlsx)
+library(plotly)
+
+setwd()
+
+fileNames <- Sys.glob("*.txt")
+for (fileName in fileNames) {
+  #read in file
+  data <- read.table(fileName, header=TRUE, skip=5, sep="\t")
+  
+  #removes low level and less confident results from software results
+  data2 <- subset(data, data$Rt>2 & data$Area>1000 & data$t.Score<0.5)
+  rownames(data2) <- NULL
+  data2 <- arrange(data2, Rt)
+  
+  #keep only selected columns. can be adjusted according to project
+  data3 <- data2 %>% select(-contains(c("Formula", "It.", "Pol.", "Scan", "CalcMz", "Delta", "TopRT", "PeakQuality", "QMethod", "Height", "Hwhm", "QuantInfo")))
+
+  new_name <- sub("*.txt", "", fileName)
+  #write.csv(data3, file = paste0("processed_",new_name,".csv"), row.names = FALSE)
+  write.xlsx(data3, paste0("processed_",new_name,".xlsx"), sheetName = "filtered", row.names = FALSE)
+  
+  data4 <- data3 %>% 
+    group_by(Class) %>% 
+    summarise(Area = sum(Area))
+  colnames(data4) <- c("Class",new_name)
+  rownames(data4) <- NULL
+  write.xlsx(data4 ,paste0("processed_",new_name,".xlsx"), sheetName = "Area", append = TRUE)
+}
+
+#Master dataframe with Class
+aligned_sum <- data.frame(c("CL","DLCL","MLCL","LPA","PA","LPC","PC","LPE","PE","LPG","PG","LPI","PI","LPS","PS","PIP","PIP2","PIP3","Cer","CerP","CerPE","Hex1SPH","Hex1Cer","Hex2Cer","Hex3Cer","CerG2GNAc1","CerG3GNAc1","CerG3GNAc2","GM3","GM2","GM1","GD1a","GD1b","GD2","GD3","GT1a","GT1b","GT1c","GT2","GT3","GQ1c","GQ1b","LSM","phSM","SM","SPH","SPHP","ST","AcHexSiE","AcHexStE","AcHexZyE","AcHexCmE","AcHexChE","ChE","D7ChE","CmE","DG","D5DG","MG","SiE","StE","TG","D5TG","ZyE","AcCa","AEA","Co","cPA","FA","LPEt","LPMe","OAHFA","PAF","PEt","PMe","SL","WE"))
+colnames(aligned_sum) <- "Class"
+aligned_sum <- data.frame(sort(aligned_sum$Class))
+colnames(aligned_sum) <- "Class"
+master_list <- aligned_sum
+
+fileNames_2 <- Sys.glob("processed*")
+samples <- lapply(fileNames_2, function(x) {
+  read_excel(x, sheet = "Area")})
+
+# Align data by Class master list, now renamed as aligned_sum
+for (df in samples) {
+  #df <- df[,-1]
+  aligned_sum <- merge(aligned_sum, df, by = "Class", all = TRUE)
+}
+
+aligned_sum <- aligned_sum %>% select(-contains(c("1.x", "1.y", "...1")))
+
+#Excel file with aligned results
+write.xlsx(aligned_sum,"R_results_LS.xlsx", sheetName = "processed", row.names = FALSE)
+
+# plots and cleaning
+nmbr_cols <- ncol(aligned_sum)
+nmbr_cols <- nmbr_cols -1
+nmbr_na <- rowSums(is.na(aligned_sum))
+
+# remove analytes not found in any samples
+aligned_sum2 <-  subset(aligned_sum, nmbr_na < nmbr_cols)
+
+#normalize
+#normalize (peak area)
+#normalize based on abundance
+
+smpl_start <- readline(prompt = "Column of first sample?: " )
+column_sums <- colSums(aligned_sum2[smpl_start:ncol(aligned_sum2)], na.rm = TRUE)
+
+# Divide each analyte by sum of that sample 
+a <- function(x){x/column_sums}
+norm_1 <- apply(aligned_sum2[smpl_start:ncol(aligned_sum2)],1,a)
+norm_1 <- t(norm_1)
+#add back the columns lost in calculations
+info_column_end <- (as.numeric(unlist(smpl_start)) - 1)
+norm_1 <- cbind(aligned_sum2[1:info_column_end], norm_1)
+
+norm_2 <- pivot_longer(norm_1, cols = -c(Class), names_to = "Sample", values_to = "Relative Abundance")
+
+#Excel file with subset sets
+#normalized by all
+write.xlsx(norm_1,"R_results_LS.xlsx", sheetName = "normalized_by_all", row.names = FALSE, append = TRUE)
+
+#"Long" data, by class
+write.xlsx(norm_2,"R_results_LS.xlsx", sheetName = "norm_grouped_all", append = TRUE)
+
+
